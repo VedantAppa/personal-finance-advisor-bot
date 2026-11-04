@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Personal Finance Advisor Bot - Demo</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--paper:#f3f5f1;--ink:#16262b;--teal:#0e6b63;--amber:#c98a1b;--brick:#b5432c;--line:#d5dbd3}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#121b1e;--ink:#e6ece8;--teal:#4fb5a9;--amber:#e2a93a;--brick:#e07b63;--line:#2b3a3e}}
+:root[data-theme="dark"]{--paper:#121b1e;--ink:#e6ece8;--teal:#4fb5a9;--amber:#e2a93a;--brick:#e07b63;--line:#2b3a3e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 "Segoe UI",system-ui,sans-serif}
+header{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;padding:16px 20px;border-bottom:2px solid var(--teal)}
+h1{margin:0;font-size:1.3rem}h2{font-size:1.05rem;margin:26px 0 8px}
+main{display:grid;grid-template-columns:290px 1fr;gap:28px;padding:20px;max-width:1100px;margin:auto}
+aside form{display:grid;gap:8px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--line)}
+aside h2{margin:0}
+input,select,button{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:4px;background:transparent;color:inherit;max-width:100%}
+button{background:var(--teal);color:#fff;border-color:var(--teal);cursor:pointer}
+button.ghost{background:none;color:var(--ink);border-color:var(--line)}
+:focus-visible{outline:3px solid var(--amber);outline-offset:1px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.stats div{border-left:4px solid var(--teal);padding:4px 12px}
+.stats span{display:block;font-size:.85rem;opacity:.75}.stats b{font-size:1.4rem}
+.bar{display:grid;grid-template-columns:100px 1fr 70px;gap:10px;align-items:center;margin:6px 0}
+.track{height:12px;background:var(--line);border-radius:6px;overflow:hidden}
+.fill{height:100%;background:var(--teal)}.fill.over{background:var(--brick)}
+.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse}td{padding:6px 4px;border-bottom:1px solid var(--line)}
+td.r{text-align:right}td button{background:none;color:var(--brick);border:0;padding:0 4px}
+pre{white-space:pre-wrap;font:inherit;background:rgba(14,107,99,.1);padding:12px;border-radius:4px}pre:empty{display:none}
+.ask{display:flex;gap:8px}.ask input{flex:1;min-width:0}
+.goal{margin:8px 0}.goal button{margin-left:8px;padding:2px 8px}
+.note{font-size:.85rem;opacity:.8}
+@media(max-width:800px){main{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Personal Finance Advisor Bot</h1>
+  <div><button class="ghost" id="sample">Load sample data</button> <button class="ghost" id="clear">Clear</button></div>
+</header>
+<main>
+<aside>
+  <form id="fi"><h2>Add income</h2>
+    <input name="source" placeholder="Source (salary, client)" required>
+    <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required>
+    <button>Save income</button></form>
+  <form id="fe"><h2>Add expense</h2>
+    <select name="category"></select>
+    <input name="note" placeholder="Note (optional)">
+    <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required>
+    <button>Save expense</button></form>
+  <form id="fg"><h2>New savings goal</h2>
+    <input name="name" placeholder="Emergency fund" required>
+    <input name="target" type="number" min="1" placeholder="Target amount" required>
+    <button>Save goal</button></form>
+  <p class="note">Demo version: data stays in your browser. The full Flask + SQLite + Gemini app is in the project download.</p>
+</aside>
+<section>
+  <div class="stats">
+    <div><span>Income</span><b id="sI">0</b></div><div><span>Spent</span><b id="sS">0</b></div>
+    <div><span>Saved</span><b id="sV">0</b></div><div><span>Savings rate</span><b id="sR">0%</b></div>
+  </div>
+  <h2>Spending by category</h2><div id="bars"></div>
+  <h2>Budget plan (50 / 30 / 20)</h2><p id="lim"></p><ul id="tips"></ul>
+  <h2>Savings goals</h2><div id="goals"></div>
+  <h2>Transactions</h2><div class="scroll"><table><tbody id="rows"></tbody></table></div>
+  <h2>Monthly report</h2><button id="rb">Generate report</button><pre id="rep"></pre>
+  <h2>Ask the advisor</h2>
+  <div class="ask"><input id="q" placeholder="How can I cut my food spending?"><button id="ab">Ask</button></div><pre id="ans"></pre>
+</section>
+</main>
+<script>
+const CATS=["Rent","Food","Transport","Utilities","Education","Healthcare","Entertainment","Shopping","Other"];
+const ESS=new Set(["Rent","Food","Transport","Utilities","Education","Healthcare"]);
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>Number(n).toLocaleString(undefined,{maximumFractionDigits:0});
+let D={inc:[],exp:[],goals:[],id:1};
+try{D=JSON.parse(localStorage.getItem("pfa"))||D}catch(e){}
+const save=()=>{try{localStorage.setItem("pfa",JSON.stringify(D))}catch(e){}};
+$("fe").category.innerHTML=CATS.map(c=>`<option>${c}</option>`).join("");
+
+function sum(){
+  const income=D.inc.reduce((a,i)=>a+i.amount,0),by={};
+  D.exp.forEach(e=>by[e.category]=(by[e.category]||0)+e.amount);
+  const spent=Object.values(by).reduce((a,b)=>a+b,0);
+  return{income,spent,saved:income-spent,rate:income?(income-spent)/income*100:0,by};
+}
+function plan(s){
+  if(s.income<=0)return{tips:["Add your monthly income to get a budget plan."]};
+  const needs=s.income*.5,wants=s.income*.3,sav=s.income*.2;
+  const ess=Object.entries(s.by).filter(([k])=>ESS.has(k)).reduce((a,[,v])=>a+v,0),disc=s.spent-ess,t=[];
+  if(ess>needs)t.push(`Essentials are ${fmt(ess-needs)} over the 50% target. Review rent, food and transport first.`);
+  if(disc>wants)t.push(`Discretionary spending is ${fmt(disc-wants)} over the 30% target. Trim entertainment and shopping.`);
+  if(s.rate<20)t.push(`Savings rate is ${s.rate.toFixed(1)}%. Aim for 20% by automating a transfer on payday.`);
+  if(!t.length)t.push("You are within all 50/30/20 targets. Consider raising your savings goal.");
+  return{needs,wants,sav,tips:t};
+}
+function render(){
+  const s=sum(),p=plan(s),max=Math.max(1,...Object.values(s.by));
+  $("sI").textContent=fmt(s.income);$("sS").textContent=fmt(s.spent);
+  $("sV").textContent=fmt(s.saved);$("sR").textContent=s.rate.toFixed(1)+"%";
+  $("bars").innerHTML=Object.entries(s.by).map(([c,v])=>`<div class="bar"><span>${esc(c)}</span><div class="track"><div class="fill ${s.income&&v>s.income*.3?"over":""}" style="width:${v/max*100}%"></div></div><span>${fmt(v)}</span></div>`).join("")||"<p>No expenses yet. Add one or load sample data.</p>";
+  $("lim").textContent=p.needs?`Needs ${fmt(p.needs)} | Wants ${fmt(p.wants)} | Savings ${fmt(p.sav)}`:"";
+  $("tips").innerHTML=p.tips.map(t=>`<li>${esc(t)}</li>`).join("");
+  $("goals").innerHTML=D.goals.map(g=>`<div class="goal"><b>${esc(g.name)}</b> ${fmt(g.saved)} / ${fmt(g.target)}<button data-g="${g.id}">Add 500</button><div class="track"><div class="fill" style="width:${Math.min(100,g.saved/g.target*100)}%"></div></div></div>`).join("")||"<p>No goals yet. Create one to start tracking.</p>";
+  const rows=[...D.exp.map(e=>({...e,t:"e"})),...D.inc.map(i=>({...i,category:"Income",note:i.source,t:"i"}))].sort((a,b)=>b.id-a.id);
+  $("rows").innerHTML=rows.map(r=>`<tr><td>${esc(r.category)}</td><td>${esc(r.note)}</td><td class="r">${r.t==="i"?"+":"-"}${fmt(r.amount)}</td><td><button data-d="${r.t}${r.id}" aria-label="Delete entry">Delete</button></td></tr>`).join("");
+  save();
+}
+const fd=f=>Object.fromEntries(new FormData(f));
+$("fi").onsubmit=e=>{e.preventDefault();const d=fd(e.target);D.inc.push({id:D.id++,source:d.source,amount:+d.amount});e.target.reset();render()};
+$("fe").onsubmit=e=>{e.preventDefault();const d=fd(e.target);D.exp.push({id:D.id++,category:d.category,note:d.note,amount:+d.amount});e.target.reset();render()};
+$("fg").onsubmit=e=>{e.preventDefault();const d=fd(e.target);D.goals.push({id:D.id++,name:d.name,target:+d.target,saved:0});e.target.reset();render()};
+document.body.addEventListener("click",e=>{
+  const t=e.target.dataset;
+  if(t.d){const id=+t.d.slice(1);if(t.d[0]==="e")D.exp=D.exp.filter(x=>x.id!==id);else D.inc=D.inc.filter(x=>x.id!==id);render()}
+  if(t.g){D.goals.find(g=>g.id==t.g).saved+=500;render()}
+});
+$("sample").onclick=()=>{
+  const a=(c,n,v)=>D.exp.push({id:D.id++,category:c,note:n,amount:v});
+  D.inc.push({id:D.id++,source:"Salary",amount:60000});
+  a("Rent","Monthly rent",20000);a("Food","Groceries",9000);a("Transport","Metro and fuel",4000);
+  a("Utilities","Electricity and internet",3000);a("Entertainment","Movies and dining out",9500);a("Shopping","Online orders",7000);
+  D.goals.push({id:D.id++,name:"Emergency fund",target:100000,saved:15000});render();
+};
+$("clear").onclick=()=>{D={inc:[],exp:[],goals:[],id:1};render()};
+$("rb").onclick=()=>{const s=sum(),p=plan(s);
+  $("rep").textContent=`Monthly report\nIncome ${fmt(s.income)} | Spent ${fmt(s.spent)} | Saved ${fmt(s.saved)} (${s.rate.toFixed(1)}%)\n\n`+p.tips.map(t=>"- "+t).join("\n")};
+$("ab").onclick=()=>{
+  const q=$("q").value.trim().toLowerCase();if(!q)return;
+  const s=sum(),top=Object.entries(s.by).sort((a,b)=>b[1]-a[1])[0];
+  let r=plan(s).tips.join("\n- ");
+  if(top)r=`Your biggest category is ${top[0]} (${fmt(top[1])}). Set a weekly cap for it and track it daily.\n- `+r;
+  $("ans").textContent="- "+r+"\n\n(Demo uses rule-based answers. The full app connects to Gemini for AI responses.)"};
+render();
+</script>
+</body>
+</html>
