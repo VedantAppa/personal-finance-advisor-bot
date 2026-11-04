@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}AI Financial Advisor — Personal Finance Advisor{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="fw-bold mb-1">AI Financial Advisor</h2>
+        <p class="text-secondary mb-0 small">
+            Powered by Google Gemini AI with grounded financial analytics and instant rule-based fallback
+        </p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        {% if is_api_connected %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2">
+            <i data-lucide="check-circle-2" style="width: 14px; height: 14px; margin-right: 4px;"></i> Gemini AI Live
+        </span>
+        {% else %}
+        <span class="badge bg-secondary-subtle text-secondary border px-3 py-2" title="Running in rule-based fallback mode">
+            <i data-lucide="shield-check" style="width: 14px; height: 14px; margin-right: 4px;"></i> Rule-Based Advisor Active
+        </span>
+        {% endif %}
+        <form action="{{ url_for('ai_advisor.clear_history') }}" method="POST" class="d-inline" onsubmit="return confirm('Clear chat history?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-fin btn-sm" title="Reset Chat Conversation">
+                <i data-lucide="rotate-ccw"></i> Reset Chat
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Navigation Pills -->
+<ul class="nav nav-pills mb-4 gap-2" id="aiTab" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active rounded-pill px-4 fw-semibold small" id="chat-tab" data-bs-toggle="pill" data-bs-target="#tab-chat" type="button" role="tab">
+            <i data-lucide="message-square" style="width: 14px; height: 14px; margin-right: 6px;"></i> Conversational Advisor
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 fw-semibold small" id="budget-tab" data-bs-toggle="pill" data-bs-target="#tab-budget" type="button" role="tab">
+            <i data-lucide="sliders" style="width: 14px; height: 14px; margin-right: 6px;"></i> Budget Advice
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 fw-semibold small" id="spending-tab" data-bs-toggle="pill" data-bs-target="#tab-spending" type="button" role="tab">
+            <i data-lucide="search" style="width: 14px; height: 14px; margin-right: 6px;"></i> Spending Forensic
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 fw-semibold small" id="savings-tab" data-bs-toggle="pill" data-bs-target="#tab-savings" type="button" role="tab">
+            <i data-lucide="piggy-bank" style="width: 14px; height: 14px; margin-right: 6px;"></i> Savings Strategies
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 fw-semibold small" id="health-tab" data-bs-toggle="pill" data-bs-target="#tab-health" type="button" role="tab">
+            <i data-lucide="activity" style="width: 14px; height: 14px; margin-right: 6px;"></i> Health Report Card
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="aiTabContent">
+    <!-- TAB 1: CONVERSATIONAL CHATBOT -->
+    <div class="tab-pane fade show active" id="tab-chat" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="ai-chat-container">
+                    <!-- Message Log -->
+                    <div class="ai-chat-messages" id="chatMessages">
+                        <!-- Welcome message -->
+                        <div class="chat-bubble assistant">
+                            <div>
+                                👋 Hello <strong>{{ current_user.name }}</strong>! I am your <strong>Personal Finance Advisor</strong>.
+                                <br><br>
+                                I am synchronized with your live financial records for <strong>{{ metrics.month_name }}</strong>:
+                                <ul class="mb-2 mt-2 ps-3">
+                                    <li>Current Inflow: <strong>{{ current_user.currency }}{{ "%.2f"|format(metrics.total_income) }}</strong></li>
+                                    <li>Total Expenses: <strong>{{ current_user.currency }}{{ "%.2f"|format(metrics.total_expenses) }}</strong></li>
+                                    <li>Current Savings: <strong>{{ current_user.currency }}{{ "%.2f"|format(metrics.net_savings) }}</strong> (Rate: {{ metrics.savings_rate }}%)</li>
+                                </ul>
+                                Ask me questions below or click one of the suggested prompts to start analyzing your finances!
+                            </div>
+                        </div>
+
+                        <!-- Render persisted database history -->
+                        {% for conv in chat_history %}
+                        <div class="chat-bubble user">
+                            <div>{{ conv.message }}</div>
+                        </div>
+                        <div class="chat-bubble assistant">
+                            {% if conv.is_fallback %}
+                            <div class="fallback-badge"><i data-lucide="shield-check" style="width:13px;height:13px;"></i> Rule-Based Advisor</div>
+                            {% endif %}
+                            <div style="white-space: pre-line;">{{ conv.response }}</div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Suggested Questions Bar -->
+                    <div class="quick-prompts-bar">
+                        <span class="text-secondary small fw-semibold me-1 d-flex align-items-center">
+                            <i data-lucide="sparkles" style="width: 14px; height: 14px; margin-right: 4px; color: var(--color-primary);"></i> Try asking:
+                        </span>
+                        <button type="button" class="quick-prompt-btn" data-prompt="Analyze my expenses this month and identify where I am spending unnecessarily.">
+                            Identify unnecessary spending
+                        </button>
+                        <button type="button" class="quick-prompt-btn" data-prompt="Suggest a realistic plan to increase my monthly savings rate to at least 25%.">
+                            How can I save more?
+                        </button>
+                        <button type="button" class="quick-prompt-btn" data-prompt="Explain my monthly financial performance and budget status in simple terms.">
+                            Explain my monthly performance
+                        </button>
+                        <button type="button" class="quick-prompt-btn" data-prompt="What category budget limits do you recommend based on my current income?">
+                            Recommend budget limits
+                        </button>
+                    </div>
+
+                    <!-- Input Bar -->
+                    <form class="chat-input-bar" id="chatForm">
+                        <input type="text" id="chatInput" placeholder="Ask a personal finance question or request spending advice..." autocomplete="off" required>
+                        <button type="submit" class="btn btn-primary-fin px-3" id="sendBtn">
+                            <i data-lucide="send"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Live Financial Context Card on Right -->
+            <div class="col-lg-4">
+                <div class="fin-card p-4 h-100 d-flex flex-column justify-content-between">
+                    <div>
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <div class="brand-icon-box" style="width: 32px; height: 32px;"><i data-lucide="database"></i></div>
+                            <div>
+                                <h6 class="fw-bold mb-0">Live Financial Context</h6>
+                                <span class="text-secondary small">{{ current_user.financial_mode.title() }} Mode</span>
+                            </div>
+                        </div>
+                        <div class="p-3 bg-light rounded-3 mb-3">
+                            <div class="d-flex justify-content-between small mb-2">
+                                <span class="text-secondary">Monthly Income:</span>
+                                <strong class="text-success">{{ current_user.currency }}{{ "%.2f"|format(metrics.total_income) }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-2">
+                                <span class="text-secondary">Total Expenses:</span>
+                                <strong class="text-danger">{{ current_user.currency }}{{ "%.2f"|format(metrics.total_expenses) }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small mb-2">
+                                <span class="text-secondary">Net Savings:</span>
+                                <strong class="{% if metrics.net_savings >= 0 %}text-primary{% else %}text-danger{% endif %}">{{ current_user.currency }}{{ "%.2f"|format(metrics.net_savings) }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-secondary">Savings Rate:</span>
+                                <strong class="text-dark">{{ metrics.savings_rate }}%</strong>
+                            </div>
+                        </div>
+                        <div class="small text-secondary mb-3">
+                            <p class="mb-1"><i data-lucide="check" style="width: 14px; height: 14px; color: var(--color-success); margin-right: 4px;"></i> Real-time mathematical verification against SQLite ledger.</p>
+                            <p class="mb-1"><i data-lucide="check" style="width: 14px; height: 14px; color: var(--color-success); margin-right: 4px;"></i> Tailored advice for {{ current_user.financial_mode.title() }} lifestyle.</p>
+                            <p class="mb-0"><i data-lucide="check" style="width: 14px; height: 14px; color: var(--color-success); margin-right: 4px;"></i> Fallback engine guarantees answers even offline.</p>
+                        </div>
+                    </div>
+                    <div class="p-3 border rounded-3 bg-white text-center">
+                        <span class="small text-secondary d-block mb-2">Want to reset or load demo data?</span>
+                        <a href="{{ url_for('auth.settings') }}" class="btn btn-outline-fin btn-sm w-100">
+                            <i data-lucide="settings"></i> Manage Settings
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: BUDGET RECOMMENDATIONS -->
+    <div class="tab-pane fade" id="tab-budget" role="tabpanel">
+        <div class="fin-card p-4">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="brand-icon-box" style="background: var(--color-secondary-subtle); color: var(--color-secondary);">
+                    <i data-lucide="sliders"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0">AI Personalized Budget Advice</h5>
+                    <span class="text-secondary small">Custom analysis of category limits & reallocation suggestions</span>
+                </div>
+            </div>
+            <div class="p-4 border rounded-3 bg-light" style="white-space: pre-line; line-height: 1.65;">
+                {{ budget_advice.text }}
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 3: SPENDING FORENSIC -->
+    <div class="tab-pane fade" id="tab-spending" role="tabpanel">
+        <div class="fin-card p-4">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="brand-icon-box" style="background: var(--color-danger-subtle); color: var(--color-danger);">
+                    <i data-lucide="search"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0">Spending Forensic & Anomaly Detection</h5>
+                    <span class="text-secondary small">Identifying discretionary spending leaks and lifestyle creep</span>
+                </div>
+            </div>
+            <div class="p-4 border rounded-3 bg-light" style="white-space: pre-line; line-height: 1.65;">
+                {{ spending_analysis.text }}
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: SAVINGS STRATEGY -->
+    <div class="tab-pane fade" id="tab-savings" role="tabpanel">
+        <div class="fin-card p-4">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="brand-icon-box" style="background: var(--color-success-subtle); color: var(--color-success);">
+                    <i data-lucide="piggy-bank"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0">Actionable Savings Strategies</h5>
+                    <span class="text-secondary small">Practical steps to build emergency funds and meet goals faster</span>
+                </div>
+            </div>
+            <div class="p-4 border rounded-3 bg-light" style="white-space: pre-line; line-height: 1.65;">
+                {{ savings_advice.text }}
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 5: HEALTH REPORT CARD -->
+    <div class="tab-pane fade" id="tab-health" role="tabpanel">
+        <div class="fin-card p-4">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="brand-icon-box" style="background: var(--color-primary-subtle); color: var(--color-primary);">
+                    <i data-lucide="activity"></i>
+                </div>
+                <div>
+                    <h5 class="fw-bold mb-0">Financial Health Report Card</h5>
+                    <span class="text-secondary small">Comprehensive audit of cashflow stability, buffers, and discipline</span>
+                </div>
+            </div>
+            <div class="p-4 border rounded-3 bg-light" style="white-space: pre-line; line-height: 1.65;">
+                {{ health_summary.text }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/ai_advisor.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}

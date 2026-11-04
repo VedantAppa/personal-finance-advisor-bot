@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+
+{% block title %}Transactions Ledger — Personal Finance Advisor{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="fw-bold mb-1">Unified Transactions Ledger</h2>
+        <p class="text-secondary mb-0 small">
+            Search, filter, and review all combined incomes and expenditures
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('reports.export_transactions') }}" class="btn btn-outline-fin btn-sm">
+            <i data-lucide="download"></i> Export CSV
+        </a>
+        <a href="{{ url_for('expenses.index') }}" class="btn btn-primary-fin btn-sm">
+            <i data-lucide="plus"></i> Add Expense
+        </a>
+    </div>
+</div>
+
+<!-- Summary Metric Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="stat-card accent-green h-100">
+            <div class="stat-header">
+                <span class="stat-title">Filtered Inflow</span>
+                <div class="stat-icon green"><i data-lucide="trending-up"></i></div>
+            </div>
+            <div class="stat-value" style="color: var(--color-success);">
+                +{{ current_user.currency }}{{ "%.2f"|format(total_inc) }}
+            </div>
+            <div class="stat-subtext text-secondary">Total incoming in view</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card accent-blue h-100">
+            <div class="stat-header">
+                <span class="stat-title">Filtered Outflow</span>
+                <div class="stat-icon rose"><i data-lucide="trending-down"></i></div>
+            </div>
+            <div class="stat-value" style="color: var(--color-danger);">
+                -{{ current_user.currency }}{{ "%.2f"|format(total_exp) }}
+            </div>
+            <div class="stat-subtext text-secondary">Total outgoing in view</div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="stat-card accent-purple h-100">
+            <div class="stat-header">
+                <span class="stat-title">Net Flow</span>
+                <div class="stat-icon purple"><i data-lucide="wallet"></i></div>
+            </div>
+            <div class="stat-value {% if net_flow >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                {{ current_user.currency }}{{ "%.2f"|format(net_flow) }}
+            </div>
+            <div class="stat-subtext text-secondary">Surplus retained in view</div>
+        </div>
+    </div>
+</div>
+
+<!-- Search, Filter & Sort Form -->
+<div class="fin-card p-4 mb-4">
+    <form method="GET" action="{{ url_for('expenses.transactions') }}" class="row g-3 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label small">Search Keyword</label>
+            <div class="input-group input-group-sm">
+                <input type="text" name="q" class="form-control" placeholder="Search merchant, notes..." value="{{ search_query }}">
+            </div>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Type</label>
+            <select name="type" class="form-select form-select-sm">
+                <option value="" {% if not txn_type %}selected{% endif %}>All Types</option>
+                <option value="income" {% if txn_type == 'income' %}selected{% endif %}>Income Only</option>
+                <option value="expense" {% if txn_type == 'expense' %}selected{% endif %}>Expenses Only</option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small">Category</label>
+            <input type="text" name="category" class="form-control form-control-sm" placeholder="e.g. Food, Rent" value="{{ category }}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small">Sort Order</label>
+            <select name="sort" class="form-select form-select-sm">
+                <option value="date_desc" {% if sort_by == 'date_desc' %}selected{% endif %}>Date: Newest First</option>
+                <option value="date_asc" {% if sort_by == 'date_asc' %}selected{% endif %}>Date: Oldest First</option>
+                <option value="amount_desc" {% if sort_by == 'amount_desc' %}selected{% endif %}>Amount: High to Low</option>
+                <option value="amount_asc" {% if sort_by == 'amount_asc' %}selected{% endif %}>Amount: Low to High</option>
+            </select>
+        </div>
+        <div class="col-md-2 d-flex gap-2">
+            <button type="submit" class="btn btn-primary-fin btn-sm w-100">Apply</button>
+            <a href="{{ url_for('expenses.transactions') }}" class="btn btn-outline-fin btn-sm">Reset</a>
+        </div>
+    </form>
+</div>
+
+<!-- Transactions Table -->
+<div class="fin-card">
+    <div class="fin-card-header">
+        <div>
+            <h5 class="fw-bold mb-0">Transactions History</h5>
+            <div class="text-secondary small">Showing {{ transactions|length }} matching record{{ 's' if transactions|length != 1 else '' }}</div>
+        </div>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ transactions|length }} Transactions</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-fin">
+            <thead>
+                <tr>
+                    <th>Type</th>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Category</th>
+                    <th>Payment Method</th>
+                    <th>Notes</th>
+                    <th class="text-end">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr>
+                    <td>
+                        <span class="badge {% if t.type == 'income' %}bg-success-subtle text-success border border-success-subtle{% else %}bg-danger-subtle text-danger border border-danger-subtle{% endif %}">
+                            {{ t.type.title() }}
+                        </span>
+                    </td>
+                    <td class="text-secondary small">{{ t.date.strftime('%d %b %Y') }}</td>
+                    <td class="fw-semibold text-dark">{{ t.description }}</td>
+                    <td><span class="badge badge-soft badge-soft-{{ t.category | badge_color }}">{{ t.category }}</span></td>
+                    <td class="text-secondary small">{{ t.payment_method }}</td>
+                    <td class="text-secondary small text-truncate" style="max-width: 160px;">{{ t.notes or '—' }}</td>
+                    <td class="text-end fw-bold {% if t.type == 'income' %}text-success{% else %}text-danger{% endif %}">
+                        {% if t.type == 'income' %}+{% else %}-{% endif %}{{ current_user.currency }}{{ "%.2f"|format(t.amount) }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-5 text-secondary">
+                        <i data-lucide="search" style="width: 36px; height: 36px; color: var(--text-muted); display: block; margin: 0 auto 10px;"></i>
+                        No transactions found matching your criteria. Try resetting the filters.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}

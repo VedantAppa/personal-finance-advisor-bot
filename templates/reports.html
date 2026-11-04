@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Reports & Analytics — Personal Finance Advisor{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+    <div>
+        <h2 class="fw-bold mb-1">Reports & Analytics</h2>
+        <p class="text-secondary mb-0 small">
+            Comprehensive cashflow trends, category distributions, and downloadable statements
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('reports.printable_summary', month=selected_month, year=selected_year) }}" target="_blank" class="btn btn-outline-fin btn-sm">
+            <i data-lucide="printer"></i> Printable Statement
+        </a>
+        <div class="dropdown">
+            <button class="btn btn-primary-fin btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                <i data-lucide="download"></i> Download Reports
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                <li><a class="dropdown-item small" href="{{ url_for('reports.export_transactions') }}"><i data-lucide="file-text" style="width: 14px; height: 14px;"></i> Transactions CSV</a></li>
+                <li><a class="dropdown-item small" href="{{ url_for('reports.export_budgets', month=selected_month, year=selected_year) }}"><i data-lucide="file-spreadsheet" style="width: 14px; height: 14px;"></i> Budgets CSV</a></li>
+                <li><a class="dropdown-item small" href="{{ url_for('reports.export_savings') }}"><i data-lucide="target" style="width: 14px; height: 14px;"></i> Savings Goals CSV</a></li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Period Filter -->
+<div class="fin-card p-4 mb-4">
+    <form method="GET" action="{{ url_for('reports.index') }}" class="row g-2 align-items-end">
+        <div class="col-sm-4">
+            <label class="form-label small">Reporting Month</label>
+            <select name="month" class="form-select form-select-sm">
+                {% for m in range(1, 13) %}
+                <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>
+                    {{ ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][m-1] }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-4">
+            <label class="form-label small">Reporting Year</label>
+            <select name="year" class="form-select form-select-sm">
+                {% for y in range(today.year - 2, today.year + 2) %}
+                <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-sm-4 d-flex gap-2">
+            <button type="submit" class="btn btn-primary-fin btn-sm w-100">Update Report View</button>
+            <a href="{{ url_for('reports.index') }}" class="btn btn-outline-fin btn-sm">Current Month</a>
+        </div>
+    </form>
+</div>
+
+<!-- Executive Summary Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card accent-green h-100">
+            <span class="stat-title">Total Inflow</span>
+            <div class="stat-value" style="color: var(--color-success);">{{ current_user.currency }}{{ "%.2f"|format(metrics.total_income) }}</div>
+            <div class="stat-subtext text-secondary">Gross monthly income</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card accent-blue h-100">
+            <span class="stat-title">Total Outflow</span>
+            <div class="stat-value" style="color: var(--color-danger);">{{ current_user.currency }}{{ "%.2f"|format(metrics.total_expenses) }}</div>
+            <div class="stat-subtext text-secondary">
+                {{ "%.1f"|format((metrics.total_expenses / metrics.total_income * 100) if metrics.total_income > 0 else 0) }}% expense ratio
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card accent-purple h-100">
+            <span class="stat-title">Net Savings</span>
+            <div class="stat-value {% if metrics.net_savings >= 0 %}text-primary{% else %}text-danger{% endif %}">
+                {{ current_user.currency }}{{ "%.2f"|format(metrics.net_savings) }}
+            </div>
+            <div class="stat-subtext text-secondary">Savings Rate: {{ metrics.savings_rate }}%</div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card accent-amber h-100">
+            <span class="stat-title">Budget Discipline</span>
+            <div class="stat-value" style="color: var(--color-warning-hover);">{{ metrics.budget_utilization }}%</div>
+            <div class="stat-subtext text-secondary">Utilized against limits</div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- 4 ANALYTIC CHARTS GRID -->
+<!-- ========================================== -->
+<div class="row g-4 mb-4">
+    <!-- Chart 1: Income vs Expense Trend -->
+    <div class="col-lg-6">
+        <div class="fin-card h-100">
+            <div class="fin-card-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Income vs. Expense Trend</h5>
+                    <div class="text-secondary small">Historical 6-month comparison</div>
+                </div>
+            </div>
+            <div class="fin-card-body">
+                <div style="height: 280px; position: relative;">
+                    <canvas id="reportTrendChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart 2: Category Breakdown Donut -->
+    <div class="col-lg-6">
+        <div class="fin-card h-100">
+            <div class="fin-card-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Expense Category Distribution</h5>
+                    <div class="text-secondary small">Expenditures grouped by segment</div>
+                </div>
+            </div>
+            <div class="fin-card-body d-flex flex-column align-items-center justify-content-center">
+                <div style="height: 280px; width: 100%; position: relative;">
+                    <canvas id="reportCategoryChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart 3: Net Monthly Savings Trend -->
+    <div class="col-lg-6">
+        <div class="fin-card h-100">
+            <div class="fin-card-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Net Monthly Savings Trajectory</h5>
+                    <div class="text-secondary small">Surplus retained month-over-month</div>
+                </div>
+            </div>
+            <div class="fin-card-body">
+                <div style="height: 280px; position: relative;">
+                    <canvas id="reportSavingsChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart 4: Budget Limit vs Actual Spending -->
+    <div class="col-lg-6">
+        <div class="fin-card h-100">
+            <div class="fin-card-header">
+                <div>
+                    <h5 class="fw-bold mb-0">Budget Limits vs. Actual Spending</h5>
+                    <div class="text-secondary small">Cap utilization per category</div>
+                </div>
+            </div>
+            <div class="fin-card-body">
+                <div style="height: 280px; position: relative;">
+                    <canvas id="reportBudgetChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Daily Spending Log Table -->
+<div class="fin-card mb-4">
+    <div class="fin-card-header">
+        <div>
+            <h5 class="fw-bold mb-0">Daily Spending Log</h5>
+            <div class="text-secondary small">Aggregate daily expenditures for this reporting cycle</div>
+        </div>
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle">{{ daily_report|length }} Active Days</span>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-fin">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Transactions Count</th>
+                    <th class="text-end">Total Spent</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in daily_report %}
+                <tr>
+                    <td class="fw-semibold text-dark">{{ d.date }}</td>
+                    <td class="text-secondary small">{{ d.count }} transaction{{ 's' if d.count != 1 else '' }}</td>
+                    <td class="text-end fw-bold text-danger">-{{ current_user.currency }}{{ "%.2f"|format(d.amount) }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center py-4 text-secondary">
+                        No spending transactions recorded for this period.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const historyMonths = {{ (history | map(attribute='label') | list) | tojson if history else [] }};
+    const historyIncome = {{ (history | map(attribute='income') | list) | tojson if history else [] }};
+    const historyExpense = {{ (history | map(attribute='expense') | list) | tojson if history else [] }};
+    const historySavings = {{ (history | map(attribute='savings') | list) | tojson if history else [] }};
+    const currency = {{ current_user.currency | tojson }};
+
+    renderIncomeExpenseChart('reportTrendChart', historyMonths, historyIncome, historyExpense, currency);
+
+    const categories = {{ (category_breakdown | map(attribute='category') | list) | tojson if category_breakdown else [] }};
+    const categoryAmounts = {{ (category_breakdown | map(attribute='amount') | list) | tojson if category_breakdown else [] }};
+    renderCategoryDoughnut('reportCategoryChart', categories, categoryAmounts, currency);
+
+    renderSavingsLineChart('reportSavingsChart', historyMonths, historySavings, currency);
+
+    const budgetCats = {{ (budget_details | map(attribute='category') | list) | tojson if budget_details else [] }};
+    const budgetSpent = {{ (budget_details | map(attribute='spent') | list) | tojson if budget_details else [] }};
+    const budgetLimits = {{ (budget_details | map(attribute='limit') | list) | tojson if budget_details else [] }};
+    renderBudgetUtilizationChart('reportBudgetChart', budgetCats, budgetSpent, budgetLimits, currency);
+
+    if (window.lucide && typeof window.lucide.createIcons === 'function') {
+        window.lucide.createIcons();
+    }
+});
+</script>
+{% endblock %}
